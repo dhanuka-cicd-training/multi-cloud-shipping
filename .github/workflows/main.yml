@@ -40,7 +40,7 @@ jobs:
     env:
       GROUP: weaveworksdemos
       REPO: shipping
-      GHC_REGISTRY: ghcr.io/utvecklarbolaget-backend
+      GHC_REGISTRY: ghcr.io/dhanuka-cicd-training
       #IMAGE_REPO: $GHC_REGISTRY/$GROUP/$REPO
     steps:
       - uses: actions/checkout@v3
