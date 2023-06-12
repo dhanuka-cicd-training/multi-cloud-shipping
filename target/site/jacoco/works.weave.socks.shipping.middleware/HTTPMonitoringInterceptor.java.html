@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HTTPMonitoringInterceptor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">shipping</a> &gt; <a href="index.source.html" class="el_package">works.weave.socks.shipping.middleware</a> &gt; <span class="el_source">HTTPMonitoringInterceptor.java</span></div><h1>HTTPMonitoringInterceptor.java</h1><pre class="source lang-java linenums">package works.weave.socks.shipping.middleware;
+
+import io.prometheus.client.Histogram;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationContext;
+import org.springframework.data.rest.core.config.RepositoryRestConfiguration;
+import org.springframework.data.rest.core.mapping.ResourceMappings;
+import org.springframework.data.rest.webmvc.RepositoryRestHandlerMapping;
+import org.springframework.data.rest.webmvc.support.JpaHelper;
+import org.springframework.web.servlet.HandlerInterceptor;
+import org.springframework.web.servlet.ModelAndView;
+import org.springframework.web.servlet.mvc.condition.PatternsRequestCondition;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.util.HashSet;
+import java.util.Set;
+
+<span class="nc" id="L21">public class HTTPMonitoringInterceptor implements HandlerInterceptor {</span>
+<span class="nc" id="L22">    static final Histogram requestLatency = Histogram.build()</span>
+<span class="nc" id="L23">            .name(&quot;request_duration_seconds&quot;)</span>
+<span class="nc" id="L24">            .help(&quot;Request duration in seconds.&quot;)</span>
+<span class="nc" id="L25">            .labelNames(&quot;service&quot;, &quot;method&quot;, &quot;route&quot;, &quot;status_code&quot;)</span>
+<span class="nc" id="L26">            .register();</span>
+
+    private static final String startTimeKey = &quot;startTime&quot;;
+    @Autowired
+    ResourceMappings mappings;
+    @Autowired(required=false)
+    JpaHelper jpaHelper;
+    @Autowired
+    RepositoryRestConfiguration repositoryConfiguration;
+    @Autowired
+    ApplicationContext applicationContext;
+    @Autowired
+    RequestMappingHandlerMapping requestMappingHandlerMapping;
+    private Set&lt;PatternsRequestCondition&gt; urlPatterns;
+    @Value(&quot;${spring.application.name:orders}&quot;)
+    private String serviceName;
+
+    @Override
+    public boolean preHandle(HttpServletRequest httpServletRequest, HttpServletResponse
+            httpServletResponse, Object o) throws Exception {
+<span class="nc" id="L46">        httpServletRequest.setAttribute(startTimeKey, System.nanoTime());</span>
+<span class="nc" id="L47">        return true;</span>
+    }
+
+    @Override
+    public void postHandle(HttpServletRequest httpServletRequest, HttpServletResponse
+            httpServletResponse, Object o, ModelAndView modelAndView) throws Exception {
+<span class="nc" id="L53">        long start = (long) httpServletRequest.getAttribute(startTimeKey);</span>
+<span class="nc" id="L54">        long elapsed = System.nanoTime() - start;</span>
+<span class="nc" id="L55">        double seconds = (double) elapsed / 1000000000.0;</span>
+<span class="nc" id="L56">        String matchedUrl = getMatchingURLPattern(httpServletRequest);</span>
+<span class="nc bnc" id="L57" title="All 2 branches missed.">        if (!matchedUrl.equals(&quot;&quot;)) {</span>
+<span class="nc" id="L58">            requestLatency.labels(</span>
+                    serviceName,
+<span class="nc" id="L60">                    httpServletRequest.getMethod(),</span>
+                    matchedUrl,
+<span class="nc" id="L62">                    Integer.toString(httpServletResponse.getStatus())</span>
+<span class="nc" id="L63">            ).observe(seconds);</span>
+        }
+<span class="nc" id="L65">    }</span>
+
+    @Override
+    public void afterCompletion(HttpServletRequest httpServletRequest, HttpServletResponse
+            httpServletResponse, Object o, Exception e) throws Exception {
+<span class="nc" id="L70">    }</span>
+
+    private String getMatchingURLPattern(HttpServletRequest httpServletRequest) {
+<span class="nc" id="L73">        String res = &quot;&quot;;</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">        for (PatternsRequestCondition pattern : getUrlPatterns()) {</span>
+<span class="nc" id="L75">            PatternsRequestCondition condition = pattern.getMatchingCondition(httpServletRequest);</span>
+<span class="nc bnc" id="L76" title="All 4 branches missed.">            if (condition != null &amp;&amp; !httpServletRequest.getServletPath().equals(&quot;/error&quot;)) {</span>
+<span class="nc" id="L77">                res = condition.getPatterns().iterator().next();</span>
+<span class="nc" id="L78">                break;</span>
+            }
+<span class="nc" id="L80">        }</span>
+<span class="nc" id="L81">        return res;</span>
+    }
+
+    private Set&lt;PatternsRequestCondition&gt; getUrlPatterns() {
+<span class="nc bnc" id="L85" title="All 2 branches missed.">        if (this.urlPatterns == null) {</span>
+<span class="nc" id="L86">            this.urlPatterns = new HashSet&lt;&gt;();</span>
+<span class="nc" id="L87">            requestMappingHandlerMapping.getHandlerMethods().forEach((mapping, handlerMethod) -&gt;</span>
+<span class="nc" id="L88">                    urlPatterns.add(mapping.getPatternsCondition()));</span>
+<span class="nc" id="L89">            RepositoryRestHandlerMapping repositoryRestHandlerMapping = new</span>
+                    RepositoryRestHandlerMapping(mappings, repositoryConfiguration);
+            //repositoryRestHandlerMapping.setJpaHelper(jpaHelper);
+<span class="nc" id="L92">            repositoryRestHandlerMapping.setApplicationContext(applicationContext);</span>
+<span class="nc" id="L93">            repositoryRestHandlerMapping.afterPropertiesSet();</span>
+<span class="nc" id="L94">            repositoryRestHandlerMapping.getHandlerMethods().forEach((mapping, handlerMethod) -&gt;</span>
+<span class="nc" id="L95">                    urlPatterns.add(mapping.getPatternsCondition()));</span>
+        }
+<span class="nc" id="L97">        return this.urlPatterns;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>
