@@ -1,0 +1,132 @@
+---
+name: GitHub Action based CI Pipeline for Shipping
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+
+  compile:
+    #runs-on: self-hosted
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        java: [ 11 ]
+    name: Java ${{ matrix.java }} compile
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v3
+        with:
+          path: main
+      - name: Setup Java
+        uses: actions/setup-java@v2
+        with:
+          distribution: 'adopt'
+          java-package: jdk
+          java-version: ${{ matrix.java }}
+      - name: Compile Test and Code Analyze
+        working-directory: ./main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: mvn -B verify
+    
+
+  build:
+    runs-on: ubuntu-20.04
+    needs: compile
+    name: Build the Maven Project and Docker Image then Push to GHC
+    permissions:
+      contents: read
+      packages: write
+    env:
+      GROUP: weaveworksdemos
+      REPO: shipping
+      GHC_REGISTRY: ghcr.io/utvecklarbolaget-backend
+      #IMAGE_REPO: $GHC_REGISTRY/$GROUP/$REPO
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          path: main
+      - uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Set up JDK 11
+        uses: actions/setup-java@v2
+        with:
+          distribution: 'adopt'
+          java-version: '11'
+          java-package: jdk
+      - name: Build project without testing
+        working-directory: ./main
+        run: mvn -B verify -DskipTests
+      - name: Upload Maven build artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: artifact.jar
+          path: ./main/target/shipping.jar
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
+        with:
+          registry: ${{ env.GHC_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Increment latest tag from git
+        id: increment-git-tag
+        working-directory: ./main
+        run: |
+          bash ./build/git_update.sh -v minor main
+
+      - name: Build and Tag the Image to Github GHC
+        id: build-image
+        working-directory: ./main
+        env:
+          GHC_REPOSITORY: ${{ env.GROUP }}/${{ env.REPO }}
+          IMAGE_TAG: ${{ steps.increment-git-tag.outputs.git-tag }}
+        run: |
+          docker build -t $GHC_REGISTRY/$GHC_REPOSITORY:$IMAGE_TAG .
+
+      - name: Scan images
+        id: scan-image
+        env:
+          GHC_REGISTRY: ${{ env.GHC_REGISTRY }}
+          GHC_REPOSITORY: ${{ env.GROUP }}/${{ env.REPO }}
+          IMAGE_TAG: ${{ steps.increment-git-tag.outputs.git-tag }}
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.GHC_REGISTRY }}/${{ env.GROUP }}/${{ env.REPO }}:${{ steps.increment-git-tag.outputs.git-tag }}
+          scan-type: 'fs'
+          severity: CRITICAL,HIGH
+          format: 'table'
+          #exit-code: 1
+          #template: '@/contrib/sarif.tpl'
+          #output: 'trivy-results.sarif'
+          ignore-unfixed: true
+          #format: 'sarif'
+          #output: 'trivy-results.sarif'
+
+      - name: Push the Image to GHC
+        id: push-image
+        env:
+          GHC_REGISTRY: ${{ env.GHC_REGISTRY }}
+          GHC_REPOSITORY: ${{ env.GROUP }}/${{ env.REPO }}
+          IMAGE_TAG: ${{ steps.increment-git-tag.outputs.git-tag }}
+        run: |
+          docker push $GHC_REGISTRY/$GHC_REPOSITORY:$IMAGE_TAG
+
+  list_artifacts:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+    - name: call webhook to get artifacts
+      #working-directory: main
+      #/multi-cloud-shipping/./main'. No such file or directory
+      env:
+        FOR_WEBHOOKS_SECRET: ${{ secrets.FOR_WEBHOOKS_SECRET }}
+        GITHUB_REPOSITORY: multi-cloud-shipping
+      run: |
+        echo "::add-mask::$FOR_WEBHOOKS_SECRET"
+        curl --verbose --fail --show-error --location --request GET "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts" --header "Authorization: token $FOR_WEBHOOKS_SECRET" --header 'Content-Type: application/json' --header 'Accept: application/vnd.github.v3+json'
