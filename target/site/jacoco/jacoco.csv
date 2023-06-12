@@ -1,9 +1,0 @@
-GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
-shipping,works.weave.socks.shipping.configuration,RabbitMqConfiguration,63,0,0,0,15,0,8,0,8,0
-shipping,works.weave.socks.shipping.configuration,WebMvcConfig,18,0,0,0,3,0,3,0,3,0
-shipping,works.weave.socks.shipping,ShippingServiceApplication,8,0,0,0,3,0,2,0,2,0
-shipping,works.weave.socks.shipping.entities,Shipment,11,70,7,5,0,20,6,10,0,10
-shipping,works.weave.socks.shipping.entities,HealthCheck,8,44,0,0,1,18,1,8,1,8
-shipping,works.weave.socks.shipping.controllers,ShippingController,76,0,0,0,22,0,5,0,5,0
-shipping,works.weave.socks.shipping.controllers,ShippingController.new ChannelCallback() {...},15,0,0,0,3,0,2,0,2,0
-shipping,works.weave.socks.shipping.middleware,HTTPMonitoringInterceptor,177,0,10,0,37,0,14,0,9,0
